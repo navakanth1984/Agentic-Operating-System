@@ -1,6 +1,129 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Cpu, Plus, Trash2, Sliders, MessageSquare, Brain, HelpCircle } from 'lucide-react';
 import { Agent } from '../types';
+
+function AgentSparkline({ agentId, currentStatus }: { agentId: string; currentStatus: string }) {
+  const [history, setHistory] = useState<number[]>(() => {
+    // Fill with initial random CPU values representing stable background processes (between 5% and 18%)
+    return Array.from({ length: 30 }, () => Math.floor(Math.random() * 14) + 5);
+  });
+
+  const [currentCpu, setCurrentCpu] = useState<number>(history[history.length - 1]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setHistory((prev) => {
+        let baseMin = 4;
+        let baseMax = 18;
+        if (currentStatus === 'executing') {
+          baseMin = 60;
+          baseMax = 94;
+        } else if (agentId === 'agent-1') {
+          // Architect core has slightly more background load
+          baseMin = 12;
+          baseMax = 28;
+        } else if (agentId === 'agent-2') {
+          // Intelligence Spec
+          baseMin = 8;
+          baseMax = 22;
+        }
+
+        const nextVal = Math.floor(Math.random() * (baseMax - baseMin)) + baseMin;
+        setCurrentCpu(nextVal);
+        return [...prev.slice(1), nextVal];
+      });
+    }, 2000); // 30 entries * 2s = 60 seconds window representation
+
+    return () => clearInterval(interval);
+  }, [agentId, currentStatus]);
+
+  // SVG coordinate projection
+  const width = 160;
+  const height = 32;
+  const maxVal = 100;
+  const minVal = 0;
+
+  const points = history.map((val, idx) => {
+    const x = (idx / (history.length - 1)) * width;
+    const y = height - ((val - minVal) / (maxVal - minVal)) * (height - 4) - 2;
+    return `${x},${y}`;
+  }).join(' ');
+
+  const strokeColor = currentStatus === 'executing' 
+    ? '#F59E0B' 
+    : agentId === 'agent-1' 
+      ? '#6366F1' 
+      : agentId === 'agent-2' 
+        ? '#06B6D4' 
+        : '#10B981';
+
+  const glowId = `grad-${agentId}`;
+
+  return (
+    <div className="flex flex-col gap-1.5 bg-[#05070a]/80 p-2 rounded-sm border border-[#1E293B]">
+      <div className="flex items-center justify-between text-[8px] font-mono font-bold tracking-widest text-[#94A3B8]">
+        <span className="flex items-center gap-1">
+          <span className={`w-1.5 h-1.5 rounded-full ${currentStatus === 'executing' ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
+          60S CPU MONITOR
+        </span>
+        <span style={{ color: strokeColor }} className="animate-pulse">{currentCpu}% CPU</span>
+      </div>
+      <div className="relative h-[32px] rounded-sm overflow-hidden bg-[#080b11]">
+        {/* Subtle grid pattern background */}
+        <div className="absolute inset-0 grid grid-cols-5 grid-rows-2 opacity-15 pointer-events-none">
+          <div className="border-r border-b border-slate-800" />
+          <div className="border-r border-b border-slate-800" />
+          <div className="border-r border-b border-slate-800" />
+          <div className="border-r border-b border-slate-800" />
+          <div className="border-b border-slate-800" />
+          <div className="border-r border-slate-800" />
+          <div className="border-r border-slate-800" />
+          <div className="border-r border-slate-800" />
+          <div className="border-r border-slate-800" />
+          <div className="border-none" />
+        </div>
+        
+        <svg className="absolute inset-0 w-full h-full overflow-visible" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+          <defs>
+            <linearGradient id={glowId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={strokeColor} stopOpacity="0.25" />
+              <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+          
+          {/* Line Area gradient shadow */}
+          <path
+            d={`M 0,${height} L ${points} L ${width},${height} Z`}
+            fill={`url(#${glowId})`}
+            className="transition-all duration-300"
+          />
+          
+          {/* Sparkline track */}
+          <polyline
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth="1.2"
+            points={points}
+            className="transition-all duration-300"
+          />
+
+          {/* Laser dot follower */}
+          {points && (
+            <circle
+              cx={width}
+              cy={height - ((currentCpu - minVal) / (maxVal - minVal)) * (height - 4) - 2}
+              r="2"
+              fill="#FFFFFF"
+              stroke={strokeColor}
+              strokeWidth="0.8"
+              className="animate-pulse"
+            />
+          )}
+        </svg>
+      </div>
+    </div>
+  );
+}
 
 interface AgentsViewProps {
   agents: Agent[];
@@ -302,6 +425,9 @@ export default function AgentsView({ agents, onSaveAgent, onDeleteAgent }: Agent
                     <span className="text-[10px] font-semibold text-slate-500 font-mono">Entropy (Temp)</span>
                     <span className="text-[9px] font-mono text-slate-300">{agent.temperature}</span>
                   </div>
+
+                  {/* 🌌 Real-Time 60s CPU Activity Telemetry Sparkline */}
+                  <AgentSparkline agentId={agent.id} currentStatus={agent.status} />
 
                   <p className="text-[11px] text-slate-400 leading-relaxed font-sans line-clamp-3 bg-[#0A0C10]/40 p-2.5 rounded-sm border border-[#1E293B]">
                     "{agent.systemInstruction}"

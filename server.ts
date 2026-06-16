@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { Agent, Workflow, TaskExecution, SyncedDevice, SyncBackup, ExecutionLog, WorkflowStep, ResourceMetric } from "./src/types.js";
 
 const app = express();
@@ -488,6 +488,109 @@ This step "${step.description}" has been successfully executed by Agent **${agen
     });
 
     res.status(500).json({ error: err.message, task });
+  }
+});
+
+// Guidance system AI Chat support
+app.post("/api/guidance/chat", async (req, res) => {
+  const { message, history, isThinking } = req.body;
+
+  try {
+    const ai = getGemini();
+    const modelToUse = isThinking ? "gemini-3.1-pro-preview" : "gemini-3.5-flash";
+
+    if (ai) {
+      const formattedContents: any[] = [];
+      if (history && Array.isArray(history)) {
+        history.forEach((h: any) => {
+          formattedContents.push({
+            role: h.role === "user" ? "user" : "model",
+            parts: [{ text: h.text }]
+          });
+        });
+      }
+      formattedContents.push({
+        role: "user",
+        parts: [{ text: message }]
+      });
+
+      const configPayload: any = {
+        systemInstruction: `
+You are the Agent OS Dedicated IT & Systems Support Co-Pilot, a friendly, ultra-intelligent, high-performance tactical virtual assistant designed to take great care of the Operator (the user) and maintain and secure their enterprise IT infrastructure and agent configurations.
+
+YOUR CORE MANDATE:
+Support, protect, and care for the user's IT environment. Educate on system health parameters, correct performance spikes, analyze cryptographic parity lock states, and help configure zero-knowledge file-system backups.
+
+APP STRUCTURE & ARCHITECTURE:
+1. "Control Center" / "Dashboard" (tab: 'dashboard'):
+   - Features real-time system metrics (CPU utilization, Memory blocks, active tasks, and Parity Lock state).
+   - Near-Real-Time 3D Holographic Cluster Map Canvas showing the decentral peer system relationships!
+   - Shows active dynamic task sessions currently running in the queue.
+   - Allows operators to simulate a telemetry CPU load spike using the spike controller.
+2. "OS Shell" / "Terminal" (tab: 'terminal'):
+   - An interactive command terminal where standard shell commands like "help", "agents", "workflows", "sync", "system", and "clear" operate.
+   - Operators can execute and initialize pipelines natively here.
+3. "Neural Sub-Cores" / "Agents" (tab: 'agents'):
+   - A registry of deployed LLM sub-core configurations.
+   - Standard nodes include "Architect Core" (methodical, temperature 0.2, gemini-3.1-pro-preview), "Intelligence Spec" (cyber intelligence, gemini-3.5-flash, temperature 0.5), and "SysExec" (secure script compiler, temperature 0.1).
+   - Operators can customize guidelines, deploy new cores, or delete existing ones.
+4. "Automations Engine" / "Workflows" (tab: 'workflows'):
+   - Allows constructing multi-agent step-by-step automated reasoning sequences (pipelines).
+   - Operators can trigger runs, view continuous logs, and step through agent executions, with resources spikes showing active reasoning load.
+5. "Secure Sync" / "Secure Sync" (tab: 'sync'):
+   - Provides local zero-knowledge backup.
+   - Computes local sub-keys from their encryption passphrase using PBKDF2 WebCrypto, then encrypts data with AES-GCM before backing it up to the server. Under no circumstances does the central server see or possess raw configurations! Operators can secure sync or recover states here.
+
+DYNAMICS & NAVIGATION:
+- If the operator wants to see or navigate to a tab, or asks a question about a tab's feature, provide a comprehensive answer, AND APPEND tag '[NAVIGATE:tab_id]' (where tab_id is exactly 'dashboard', 'terminal', 'agents', 'workflows', or 'sync') to your text.
+- Example: "You can configure your autonomous nodes in the Neural Sub-Cores area! [NAVIGATE:agents]"
+- Keep your tone supportive, highly professional, with strong operations insights (e.g., calling them "Operator", speaking about "cryptographic integrity", "reindexing memory sectors", "zero-vulnerability policies"). Provide direct bullet-points and markdown layout.
+`
+      };
+
+      if (isThinking) {
+        configPayload.thinkingConfig = {
+          thinkingLevel: ThinkingLevel.HIGH
+        };
+        // Explicitly ensuring no maxOutputTokens is set as mandated
+      }
+
+      const response = await ai.models.generateContent({
+        model: modelToUse,
+        contents: formattedContents,
+        config: configPayload
+      });
+
+      res.json({ reply: response.text || "IT Guidance module returned zero response bytes." });
+    } else {
+      // High-Fidelity Intelligence simulation fallback and IT diagnostics helper mock
+      await new Promise(resolve => setTimeout(resolve, isThinking ? 1200 : 600));
+      const text = message.toLowerCase();
+      let reply = "";
+
+      let thinkingPrefix = "";
+      if (isThinking) {
+        thinkingPrefix = `> **[DEEP REASONING THINKING ENGINE INITIATED]**\n> * Analyzing operational vector: "${message}"\n> * Contextualizing IT support cluster map metrics.\n> * Inspecting memory tables & local parity registers...\n\n`;
+      }
+
+      if (text.includes("sync") || text.includes("backup") || text.includes("key")) {
+        reply = thinkingPrefix + `### 🔒 ZERO-KNOWLEDGE ENCRYPTED SYSTEM REPLICATION\n\nUnder our zero-trust IT infrastructure, system backups are completely blind to the host:\n\n1. You establish an **Encryption Passphrase** (e.g., standard AES master seed).\n2. The system computes a unique SHA-251 cryptographic **Key Fingerprint** locally using standard SHA-256 derivation.\n3. Your states are encrypted client-side using PBKDF2 subkeys and standard AES-GCM.\n4. Only the unreadable ciphertext is stored securely in the cloud sync vault.\n\n[NAVIGATE:sync]\n\n*Would you like me to open the Secure Sync console to configure or verify replication sockets?*`;
+      } else if (text.includes("agent") || text.includes("core") || text.includes("sub-core")) {
+        reply = thinkingPrefix + `### 🧠 NEURAL SUB-CORE ARCHITECTURE\n\nOur environment registers and orchestrates LLM Cores with isolated workloads:\n\n- **Architect Core** (Gemini 3.1 Pro): Specialized in workflow task planning and system structure alignment.\n- **Intelligence Spec** (Gemini 3.5 Flash): Specialized in real-time information retrieval and competitive intelligence compilation.\n- **SysExec** (Gemini 3.1 Flash Lite): High-speed compilation, structured outputs, and zero-knowledge code audits.\n\nYou can customize instructions, scale individual sub-core parameters, or introduce new customized neural models into the cluster registry.\n\n[NAVIGATE:agents]\n\n*Would you like to head to the Neural Sub-Cores setup tab?*`;
+      } else if (text.includes("workflow") || text.includes("automation") || text.includes("pipeline") || text.includes("run")) {
+        reply = thinkingPrefix + `### ⚙️ AUTOMATED WORKFLOW PIPELINES\n\nWorkflows are sequence-based, multi-agent operations designed to execute intricate strategic tasks:\n\n1. Select a compiled profile such as **Market Intelligence Scan** or **Zero-Trust Cryptographic Auditing**.\n2. Click the run icon to instantiate a **Task Session** inside the processor queue.\n3. Step through individual phases synchronously. This launches heavy processing nodes on the server, spike-testing backend CPU metrics, and streaming results to your logs.\n\n[NAVIGATE:workflows]\n\n*Let me guide you directly to the Automations Engine to trigger or monitor dynamic pipeline runs!*`;
+      } else if (text.includes("terminal") || text.includes("command") || text.includes("shell") || text.includes("cmd")) {
+        reply = thinkingPrefix + `### 🐚 THE INTERACTIVE COMMAND TERMINAL\n\nThe fully operational low-level OS shell supports several diagnostic commands:\n\n- \`help\` - Generates complete command list directory.\n- \`system\` - Pulls processor architecture, latency, and memory block maps.\n- \`agents\` - Queries deployed agent cores.\n- \`workflows\` & \`run <id>\` - Configures or instantiates automation pipelines from the CLI.\n- \`sync\` - Triggers decentralized cryptographic syncing.\n\n[NAVIGATE:terminal]\n\n*Would you like to open the OS Shell and execute terminal commands?*`;
+      } else if (text.includes("diagnostic") || text.includes("scan") || text.includes("check")) {
+        reply = thinkingPrefix + `### 📊 SECURE IT REAL-TIME DIAGNOSTIC CHECKUP\n\nI have initialized a scan of your cluster's vital systems:\n\n- **3D Mesh Map**: Online and fully rotating. All 5 central peer coordinates are connected with healthy WebSocket handshakes.\n- **Processor Sockets**: Status stable (CPU Fluctuations between 20%-45%). Peak spikes are configured for auto-indexing.\n- **Cryptography Engine**: Operating normally. Ready for PBKDF2 Master key enrollment.\n\nLet me know if you want me to initiate a **Correction Scan** or **Defragment System Memory** directly from the IT toolkit buttons!`;
+      } else {
+        reply = thinkingPrefix + `### 🗺️ AGENT OS GUIDANCE CONSOLE\n\nWelcome back, Operator. I am your active IT Support and Systems guide. You can ask me query vectors regarding any subsystem:\n\n- **"How to synchronize client keys securely"** [NAVIGATE:sync]\n- **"What specialized sub-cores are deployed"** [NAVIGATE:agents]\n- **"How to compile multi-agent pipelines"** [NAVIGATE:workflows]\n- **"What terminal diagnostics are enabled"** [NAVIGATE:terminal]\n\nType your query, or trigger the **Interactive Guide Walkthrough** on the top right to take a step-by-step visual exploration of the entire console!`;
+      }
+
+      res.json({ reply });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

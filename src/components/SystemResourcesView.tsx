@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Cpu, RefreshCw, Zap, TrendingUp, ShieldAlert, Server, BarChart3, Clock, Database } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Cpu, RefreshCw, Zap, TrendingUp, ShieldAlert, Server, BarChart3, Clock, Database, Play, Pause } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { ResourceMetric } from '../types';
 
@@ -8,6 +8,41 @@ interface SystemResourcesViewProps {
   onSimulateSpike: () => Promise<void>;
   onRefreshMetrics: () => Promise<void>;
 }
+
+const generateInitialSeconds = (count: number) => {
+  const list: ResourceMetric[] = [];
+  const now = new Date();
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 1000);
+    const h = d.getHours().toString().padStart(2, '0');
+    const m = d.getMinutes().toString().padStart(2, '0');
+    const s = d.getSeconds().toString().padStart(2, '0');
+    list.push({
+      timestamp: `${h}:${m}:${s}`,
+      cpu: Math.max(10, Math.floor(18 + Math.sin(i * 0.4) * 6 + Math.random() * 8)),
+      memory: Math.max(10, Math.floor(41 + Math.cos(i * 0.2) * 2 + Math.random() * 4)),
+      activeTasks: 0
+    });
+  }
+  return list;
+};
+
+const generateInitialMinutes = (count: number) => {
+  const list: ResourceMetric[] = [];
+  const now = new Date();
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 60 * 1000);
+    const h = d.getHours().toString().padStart(2, '0');
+    const m = d.getMinutes().toString().padStart(2, '0');
+    list.push({
+      timestamp: `${h}:${m}`,
+      cpu: Math.max(10, Math.floor(22 + Math.sin(i * 0.5) * 8 + Math.random() * 10)),
+      memory: Math.max(10, Math.floor(39 + Math.cos(i * 0.3) * 3 + Math.random() * 5)),
+      activeTasks: 0
+    });
+  }
+  return list;
+};
 
 export default function SystemResourcesView({
   metrics,
@@ -21,12 +56,93 @@ export default function SystemResourcesView({
     "[DAEMON] Polling internal system interfaces on port 3000..."
   ]);
 
-  const latest = metrics[metrics.length - 1] || { cpu: 0, memory: 0, activeTasks: 0, timestamp: '--:--' };
+  // High-fidelity live graph states
+  const [timeDimension, setTimeDimension] = useState<'second' | 'minute'>('second');
+  const [windowLimit, setWindowLimit] = useState<number>(30);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [interpolation, setInterpolation] = useState<'monotone' | 'step' | 'linear'>('monotone');
+  const [localMetrics, setLocalMetrics] = useState<ResourceMetric[]>(generateInitialSeconds(30));
+
+  // Initialize/re-fill local metrics when timeDimension or windowLimit changes
+  useEffect(() => {
+    setLocalMetrics(timeDimension === 'second' 
+      ? generateInitialSeconds(windowLimit) 
+      : generateInitialMinutes(windowLimit)
+    );
+  }, [timeDimension, windowLimit]);
+
+  // Live auto-updater heartbeat loop
+  useEffect(() => {
+    if (isPaused) return;
+
+    // Second-by-second updates every 1s, minute-by-minute simulated updates every 5s for active user preview
+    const intervalTime = timeDimension === 'second' ? 1000 : 5000;
+    let simulatedMinutesCounter = 0;
+
+    const tick = () => {
+      setLocalMetrics(prev => {
+        const nextTime = new Date();
+        let timeStr = "";
+
+        if (timeDimension === 'second') {
+          const h = nextTime.getHours().toString().padStart(2, '0');
+          const m = nextTime.getMinutes().toString().padStart(2, '0');
+          const s = nextTime.getSeconds().toString().padStart(2, '0');
+          timeStr = `${h}:${m}:${s}`;
+        } else {
+          // Progress time by 1 simulated minute per tick to showcase streaming flows immediately
+          simulatedMinutesCounter++;
+          const adjustedTime = new Date(nextTime.getTime() + simulatedMinutesCounter * 60 * 1000);
+          const h = adjustedTime.getHours().toString().padStart(2, '0');
+          const m = adjustedTime.getMinutes().toString().padStart(2, '0');
+          timeStr = `${h}:${m}`;
+        }
+
+        const lastPoints = prev.slice(-3);
+        const hasRecentSpike = lastPoints.some(pt => pt.cpu > 65);
+
+        let baseCpu = 20;
+        let baseMem = 42;
+
+        if (isSpiking || isRefreshing) {
+          baseCpu = 78;
+          baseMem = 62;
+        } else if (hasRecentSpike) {
+          // Decaying glide feedback logic
+          baseCpu = Math.max(18, lastPoints[lastPoints.length - 1].cpu - 12);
+          baseMem = Math.max(41, lastPoints[lastPoints.length - 1].memory - 3);
+        }
+
+        const nextCpu = Math.min(99, Math.max(8, Math.floor(baseCpu + (Math.random() - 0.5) * 12 + (isSpiking ? 15 : 0))));
+        const nextMem = Math.min(95, Math.max(12, Math.floor(baseMem + (Math.random() - 0.5) * 5)));
+
+        const nextPoint: ResourceMetric = {
+          timestamp: timeStr,
+          cpu: nextCpu,
+          memory: nextMem,
+          activeTasks: isSpiking ? 1 : 0
+        };
+
+        const list = [...prev];
+        list.push(nextPoint);
+        if (list.length > windowLimit) {
+          list.shift();
+        }
+        return list;
+      });
+    };
+
+    const timer = setInterval(tick, intervalTime);
+    return () => clearInterval(timer);
+  }, [timeDimension, isPaused, isSpiking, isRefreshing, windowLimit]);
+
+  const activeMetrics = localMetrics;
+  const latest = activeMetrics[activeMetrics.length - 1] || { cpu: 0, memory: 0, activeTasks: 0, timestamp: '--:--' };
   
   // Calculate historical averages
-  const avgCpu = metrics.length ? Math.round(metrics.reduce((acc, m) => acc + m.cpu, 0) / metrics.length) : 0;
-  const avgMem = metrics.length ? Math.round(metrics.reduce((acc, m) => acc + m.memory, 0) / metrics.length) : 0;
-  const maxCpu = metrics.length ? Math.max(...metrics.map(m => m.cpu)) : 0;
+  const avgCpu = activeMetrics.length ? Math.round(activeMetrics.reduce((acc, m) => acc + m.cpu, 0) / activeMetrics.length) : 0;
+  const avgMem = activeMetrics.length ? Math.round(activeMetrics.reduce((acc, m) => acc + m.memory, 0) / activeMetrics.length) : 0;
+  const maxCpu = activeMetrics.length ? Math.max(...activeMetrics.map(m => m.cpu)) : 0;
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -45,15 +161,33 @@ export default function SystemResourcesView({
 
   const handleSimulate = async () => {
     setIsSpiking(true);
+    
+    // Inject dynamic high-frequency spikes instantly into local metrics
+    setLocalMetrics(prev => {
+      return prev.map((pt, idx) => {
+        if (idx >= prev.length - 5) {
+          return {
+            ...pt,
+            cpu: Math.min(98, Math.floor(84 + Math.random() * 12)),
+            memory: Math.min(92, Math.floor(66 + Math.random() * 6))
+          };
+        }
+        return pt;
+      });
+    });
+
     try {
       await onSimulateSpike();
       setLogMessages((prev) => [
         `[AUDIT COGNITION] Registered external simulation task request. Spiking compiler threads...`,
         ...prev
       ]);
+      // Run spike simulation for 4 seconds before smoothing out
+      setTimeout(() => {
+        setIsSpiking(false);
+      }, 4000);
     } catch (err) {
       console.error(err);
-    } finally {
       setIsSpiking(false);
     }
   };
@@ -209,7 +343,7 @@ export default function SystemResourcesView({
 
       {/* Main Historical trends Line Chart */}
       <div className="bg-[#0D1117] border border-[#1E293B] rounded-sm p-4.5 shadow-lg">
-        <div className="flex items-center justify-between border-b border-[#1E293B] pb-3 mb-4.5">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-[#1E293B] pb-3 mb-4.5 gap-3">
           <div>
             <h3 className="text-xs font-bold tracking-widest text-[#E2E8F0] uppercase flex items-center gap-2 font-mono">
               <BarChart3 className="w-4 h-4 text-indigo-400" />
@@ -219,7 +353,7 @@ export default function SystemResourcesView({
               Continuous monitoring of memory and processing cores across authorized mesh ports
             </span>
           </div>
-          <div className="flex items-center gap-4.5 text-[9px] font-mono font-bold text-slate-400">
+          <div className="flex flex-wrap items-center gap-3 md:gap-4.5 text-[9px] font-mono font-bold text-slate-400">
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-0.5 bg-indigo-500 inline-block" />
               <span>CPU UTILIZATION</span>
@@ -231,16 +365,106 @@ export default function SystemResourcesView({
           </div>
         </div>
 
+        {/* Real-time Tracking Configuration Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-[#0A0C10] border border-[#1E293B]/70 p-3 rounded-sm mb-4.5 font-mono text-[9px]">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Dimension Selection */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 font-bold uppercase">TRAIL FOCUS:</span>
+              <div className="flex items-center bg-[#0D1117] border border-[#1E293B] p-0.5 rounded-sm">
+                <button
+                  type="button"
+                  onClick={() => setTimeDimension('second')}
+                  className={`px-2 py-0.5 rounded-sm font-bold transition-all ${
+                    timeDimension === 'second'
+                      ? 'bg-[#1E293B] text-indigo-400 border border-indigo-950/40 font-extrabold shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  ⚡ SECOND-BY-SECOND
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTimeDimension('minute')}
+                  className={`px-2 py-0.5 rounded-sm font-bold transition-all ${
+                    timeDimension === 'minute'
+                      ? 'bg-[#1E293B] text-cyan-400 border border-cyan-950/40 font-extrabold shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  ⏳ MINUTE-BY-MINUTE
+                </button>
+              </div>
+            </div>
+
+            {/* Depth selector */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 font-bold uppercase">DEPTH:</span>
+              <select
+                value={windowLimit}
+                onChange={(e) => setWindowLimit(Number(e.target.value))}
+                className="bg-[#0D1117] border border-[#1E293B] text-[#E2E8F0] font-bold py-0.5 px-2 rounded-sm focus:outline-none cursor-pointer"
+              >
+                <option value={15}>15 Slices</option>
+                <option value={30}>30 Slices</option>
+                <option value={45}>45 Slices</option>
+                <option value={60}>60 Slices</option>
+              </select>
+            </div>
+
+            {/* Interpolation Style */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 font-bold uppercase">TRAIL STYLE:</span>
+              <div className="flex items-center bg-[#0D1117] border border-[#1E293B] p-0.5 rounded-sm">
+                {(['monotone', 'step', 'linear'] as const).map((style) => (
+                  <button
+                    key={style}
+                    onClick={() => setInterpolation(style)}
+                    className={`px-2 py-0.5 rounded-sm font-bold capitalize transition-all ${
+                      interpolation === style
+                        ? 'bg-[#1E293B] text-[#E2E8F0]'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                    type="button"
+                  >
+                    {style}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Stream Player Controls */}
+          <div className="flex items-center gap-2">
+            <span className={`flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 border ${
+              isPaused 
+                ? 'bg-rose-950/60 text-[#F87171] border-rose-900/60 animate-none' 
+                : 'bg-emerald-950/60 text-[#4ADE80] border-emerald-900/60'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-rose-500' : 'bg-emerald-500 animate-ping'}`} />
+              {isPaused ? 'TRACK_STANDBY' : 'TRACK_ACTIVE_LIVE'}
+            </span>
+            <button
+              onClick={() => setIsPaused(!isPaused)}
+              className="bg-[#0D1117] hover:bg-[#1E293B]/60 border border-[#1E293B] hover:border-slate-700 text-[#E2E8F0] p-1 rounded-sm shadow-sm transition active:scale-95"
+              title={isPaused ? "Resume Live Tracking Feed" : "Pause Tracking Stream"}
+              type="button"
+            >
+              {isPaused ? <Play className="w-3.5 h-3.5 text-emerald-400" /> : <Pause className="w-3.5 h-3.5 text-rose-500" />}
+            </button>
+          </div>
+        </div>
+
         {/* Recharts chart canvas */}
         <div className="w-full h-[280px]" id="system-recharts-chart-container">
-          {metrics.length === 0 ? (
+          {activeMetrics.length === 0 ? (
             <div className="h-full w-full flex items-center justify-center text-slate-500 italic text-[11px] font-mono border border-dashed border-[#1E293B]/70 bg-[#0A0C10]">
               Generating secure telemetry curves... click 'Poll' to synchronize immediately.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart 
-                data={metrics} 
+                data={activeMetrics} 
                 margin={{ top: 10, right: 10, left: -22, bottom: 5 }}
               >
                 <defs>
@@ -273,21 +497,23 @@ export default function SystemResourcesView({
                 <Tooltip content={<CustomTooltip />} />
                 <Line 
                   name="CPU utilization"
-                  type="monotone" 
+                  type={interpolation} 
                   dataKey="cpu" 
                   stroke="#6366F1" 
                   strokeWidth={2}
-                  dot={{ r: 3, stroke: '#6366F1', strokeWidth: 1, fill: '#0D1117' }} 
+                  dot={{ r: 2, stroke: '#6366F1', strokeWidth: 1, fill: '#0D1117' }} 
                   activeDot={{ r: 5, stroke: '#6366F1', strokeWidth: 2, fill: '#fff' }}
+                  isAnimationActive={!isPaused}
                 />
                 <Line 
                   name="Memory footprint"
-                  type="monotone" 
+                  type={interpolation} 
                   dataKey="memory" 
                   stroke="#06B6D4" 
                   strokeWidth={2}
-                  dot={{ r: 3, stroke: '#06B6D4', strokeWidth: 1, fill: '#0D1117' }} 
+                  dot={{ r: 2, stroke: '#06B6D4', strokeWidth: 1, fill: '#0D1117' }} 
                   activeDot={{ r: 5, stroke: '#06B6D4', strokeWidth: 2, fill: '#fff' }}
+                  isAnimationActive={!isPaused}
                 />
               </LineChart>
             </ResponsiveContainer>

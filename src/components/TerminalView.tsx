@@ -142,7 +142,7 @@ export default function TerminalView({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full relative z-10">
       {/* Interactive Command Log */}
-      <div className="lg:col-span-2 flex flex-col bg-[#0A0C10] rounded-sm border border-[#1E293B] shadow-2xl p-5 font-mono text-xs overflow-hidden h-[500px] lg:h-[600px]">
+      <div className="lg:col-span-2 flex flex-col bg-[#0A0C10] rounded-sm border border-[#1E293B] shadow-2xl p-4 sm:p-5 font-mono text-xs overflow-hidden h-[380px] sm:h-[500px] lg:h-[600px]">
         <div className="flex items-center justify-between border-b border-[#1E293B] pb-3 mb-4 shrink-0">
           <div className="flex items-center gap-2">
             <div className="flex gap-1.5">
@@ -181,13 +181,16 @@ export default function TerminalView({
         </div>
 
         <form onSubmit={handleCommand} className="mt-4 pt-3 border-t border-[#1E293B] shrink-0 flex items-center gap-2 lg:gap-3">
-          <span className="text-indigo-400 shrink-0 font-medium font-mono text-sm">user@agent-os:~$</span>
+          <span className="text-indigo-400 shrink-0 font-medium font-mono text-xs sm:text-sm">
+            <span className="inline sm:hidden">$</span>
+            <span className="hidden sm:inline">user@agent-os:~$</span>
+          </span>
           <input
             type="text"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
-            placeholder="Type a command (e.g. 'help', 'agents', 'workflows')..."
-            className="flex-1 bg-transparent border-0 outline-none focus:ring-0 p-0 text-white font-mono placeholder-slate-700 font-semibold selection:bg-slate-800"
+            placeholder="Type a command..."
+            className="flex-1 bg-transparent border-0 outline-none focus:ring-0 p-0 text-white font-mono placeholder-slate-800 font-semibold selection:bg-slate-800"
             autoFocus
             id="terminal-input"
           />
