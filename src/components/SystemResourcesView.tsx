@@ -139,10 +139,27 @@ export default function SystemResourcesView({
   const activeMetrics = localMetrics;
   const latest = activeMetrics[activeMetrics.length - 1] || { cpu: 0, memory: 0, activeTasks: 0, timestamp: '--:--' };
   
-  // Calculate historical averages
-  const avgCpu = activeMetrics.length ? Math.round(activeMetrics.reduce((acc, m) => acc + m.cpu, 0) / activeMetrics.length) : 0;
-  const avgMem = activeMetrics.length ? Math.round(activeMetrics.reduce((acc, m) => acc + m.memory, 0) / activeMetrics.length) : 0;
-  const maxCpu = activeMetrics.length ? Math.max(...activeMetrics.map(m => m.cpu)) : 0;
+  // Calculate historical averages and max values in a single pass to optimize rendering performance
+  const { avgCpu, avgMem, maxCpu } = React.useMemo(() => {
+    if (!activeMetrics.length) return { avgCpu: 0, avgMem: 0, maxCpu: 0 };
+
+    let sumCpu = 0;
+    let sumMem = 0;
+    let maxC = 0;
+
+    for (let i = 0; i < activeMetrics.length; i++) {
+      const m = activeMetrics[i];
+      sumCpu += m.cpu;
+      sumMem += m.memory;
+      if (m.cpu > maxC) maxC = m.cpu;
+    }
+
+    return {
+      avgCpu: Math.round(sumCpu / activeMetrics.length),
+      avgMem: Math.round(sumMem / activeMetrics.length),
+      maxCpu: maxC
+    };
+  }, [activeMetrics]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
