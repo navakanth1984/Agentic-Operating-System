@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, ClipboardList, Settings, CheckCircle2, XCircle, AlertTriangle, Cpu, ArrowRight, Layers, FileText, Check, Plus } from 'lucide-react';
+import { Play, ClipboardList, Settings, CheckCircle2, XCircle, AlertTriangle, Cpu, ArrowRight, Layers, FileText, Check, Plus, Activity, Terminal } from 'lucide-react';
 import { Agent, Workflow, TaskExecution, WorkflowStep } from '../types';
 
 interface WorkflowViewProps {
@@ -21,6 +21,14 @@ export default function WorkflowView({
 }: WorkflowViewProps) {
   const [selectedWf, setSelectedWf] = useState<Workflow | null>(workflows[0] || null);
   const [selectedTask, setSelectedTask] = useState<TaskExecution | null>(tasks[0] || null);
+  const [expandedReasoningSteps, setExpandedReasoningSteps] = useState<Record<string, boolean>>({});
+
+  const toggleStepReasoning = (stepId: string) => {
+    setExpandedReasoningSteps(prev => ({
+      ...prev,
+      [stepId]: !prev[stepId],
+    }));
+  };
 
   // Workflow builder state
   const [isCreating, setIsCreating] = useState(false);
@@ -356,10 +364,72 @@ export default function WorkflowView({
               </button>
             </div>
 
+            {/* ─●─ Horizontal Pipeline Progress Stepper Tracker ─●─ */}
+            <div className="bg-[#0A0C10] border border-[#1E293B] rounded-sm p-4 font-mono select-none" id="horizontal-stepper-tracker">
+              <div className="flex items-center justify-between mb-3 border-b border-[#1E293B]/50 pb-2 font-mono">
+                <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                  Real-time pipeline map
+                </span>
+                <span className="text-[9px] font-bold font-mono text-[#E2E8F0] tracking-wide">
+                  {selectedTask.status.toUpperCase()} ({selectedTask.steps.filter(s => s.status === 'completed').length}/{selectedTask.steps.length} STAGES LOCKED)
+                </span>
+              </div>
+              <div className="relative flex items-center justify-between w-full px-2 mt-2 pb-1 font-mono">
+                {/* Connector baseline */}
+                <div className="absolute left-6 right-6 top-[13px] h-[2px] bg-[#1E293B] -translate-y-1/2 -z-10" />
+                {/* Highlight connector line */}
+                <div 
+                  className="absolute left-6 h-[2px] bg-gradient-to-r from-emerald-500 via-indigo-500 to-amber-500 -translate-y-1/2 -z-10 transition-all duration-500"
+                  style={{
+                    width: `${
+                      selectedTask.steps.length <= 1 
+                        ? '0%' 
+                        : `${(selectedTask.steps.filter(s => s.status === 'completed').length / (selectedTask.steps.length - 1)) * 92}%`
+                    }`
+                  }}
+                />
+                {selectedTask.steps.map((step, idx) => {
+                  const isCompleted = step.status === 'completed';
+                  const isRunning = step.status === 'running';
+                  const isFailed = step.status === 'failed';
+                  
+                  let circleStyle = 'bg-slate-950 border-[#1E293B] text-slate-500';
+                  if (isCompleted) circleStyle = 'bg-emerald-950 border-emerald-500/80 text-emerald-400 hover:border-emerald-400 shadow-md shadow-emerald-950/20';
+                  if (isRunning) circleStyle = 'bg-amber-955 border-amber-500 text-amber-500 ring-2 ring-amber-500/10 animate-pulse';
+                  if (isFailed) circleStyle = 'bg-rose-950 border-rose-500 text-rose-455';
+                  
+                  return (
+                    <div 
+                      key={step.id} 
+                      className="flex flex-col items-center gap-1.5 relative z-10 group cursor-pointer transition-all hover:scale-105"
+                      onClick={() => {
+                        const el = document.getElementById(`step-card-${step.id}`);
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }}
+                      title={`Scroll to: ${step.description}`}
+                    >
+                      <div className={`w-6 h-6 border rounded-full flex items-center justify-center text-[9px] font-bold font-mono transition-all duration-300 ${circleStyle}`}>
+                        {isCompleted ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : idx + 1}
+                      </div>
+                      <span className={`text-[8px] font-mono tracking-tighter uppercase font-semibold max-w-[70px] text-center truncate ${
+                        isRunning ? 'text-amber-455 font-bold animate-pulse' : isCompleted ? 'text-slate-300' : 'text-slate-500'
+                      }`}>
+                        {step.description.split(' ').slice(0, 2).join(' ')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Visual Pipeline nodes */}
             <div className="space-y-4">
-              <span className="text-[8px] font-bold font-mono text-slate-400 uppercase tracking-widest">Active Pipeline Steps</span>
-              <div className="space-y-3.5">
+              <span className="text-[8px] font-bold font-mono text-slate-400 uppercase tracking-widest pl-1">
+                Visual Step Progress timeline & agent reasoning
+              </span>
+              
+              <div className="relative pl-6 border-l border-[#1E293B] space-y-6 ml-3 pb-2 pt-1 font-mono" id="vertical-timeline-steps-container">
                 {selectedTask.steps.map((step, idx) => {
                   const assignedAgent = agents.find((a) => a.id === step.agentId) || agents[0];
                   const isPending = step.status === 'pending';
@@ -367,33 +437,64 @@ export default function WorkflowView({
                   const isCompleted = step.status === 'completed';
                   const isFailed = step.status === 'failed';
 
+                  // Step-level logs filter
+                  const stepLogs = selectedTask.logs.filter(log => {
+                    if (!log.agentName) return false;
+                    const pathMatches = log.message.toLowerCase().includes(step.description.toLowerCase()) || 
+                                        (log.detail && log.detail.toLowerCase().includes(step.description.toLowerCase()));
+                    const agentMatches = log.agentName.toLowerCase() === assignedAgent?.name.toLowerCase();
+                    return agentMatches && (pathMatches || log.type === 'agent_start' || log.type === 'agent_response' || log.type === 'agent_error');
+                  });
+
+                  // Dynamic expand state logic (running steps are auto-expanded, others are toggleable)
+                  const isExpanded = expandedReasoningSteps[step.id] !== undefined
+                    ? expandedReasoningSteps[step.id]
+                    : (isRunning || (isCompleted && selectedTask.steps.filter(s => s.status === 'completed').length === idx + 1));
+
                   return (
                     <div
                       key={step.id}
+                      id={`step-card-${step.id}`}
                       className={`p-4 rounded-sm border transition relative overflow-hidden ${
                         isRunning
-                          ? 'bg-[#1E293B]/25 border-amber-500/50 shadow-md animate-pulse'
+                          ? 'bg-[#1E293B]/25 border-amber-500/50 shadow-md shadow-amber-955/10'
                           : isCompleted
-                          ? 'bg-[#0A0C10] border-[#1E293B]'
+                          ? 'bg-[#0A0C10] border-[#1E293B]/90'
                           : 'bg-[#0A0C10]/40 border-[#1E293B]/50 opacity-80'
                       }`}
                     >
+                      {/* Timeline node marker decoration */}
+                      <div className="absolute -left-[31px] top-5 flex items-center justify-center z-13">
+                        <div className={`w-3.5 h-3.5 rounded-full border-2 bg-slate-950 transition-all duration-300 ${
+                          isRunning 
+                            ? 'border-amber-500 bg-amber-955 scale-110 animate-pulse'
+                            : isCompleted 
+                            ? 'border-emerald-500 bg-emerald-950'
+                            : isFailed
+                            ? 'border-rose-500 bg-rose-950'
+                            : 'border-[#1E293B] bg-slate-950'
+                        }`} />
+                        {isRunning && (
+                          <span className="absolute w-5 h-5 rounded-full border border-amber-500/20 animate-ping" />
+                        )}
+                      </div>
+
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-start gap-3 min-w-0">
-                          <div className={`w-7 h-7 rounded-sm font-bold font-mono flex items-center justify-center text-[10px] shrink-0 ${assignedAgent?.iconColor}`}>
+                          <div className={`w-7 h-7 rounded-sm font-bold font-mono flex items-center justify-center text-[10px] shrink-0 border border-slate-700/50 ${assignedAgent?.iconColor}`}>
                             {assignedAgent?.name.substring(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <div className="text-xs font-bold text-slate-200 font-mono">
-                              #{idx + 1}: {step.description}
+                            <div className="text-xs font-bold text-slate-200 font-mono flex items-center gap-2">
+                              <span>#{idx + 1}: {step.description}</span>
                             </div>
-                            <div className="text-[10px] text-slate-500 mt-1 font-mono">
-                              Owner Core: <b className="text-slate-400 font-bold">{assignedAgent?.name}</b> ({assignedAgent?.role})
+                            <div className="text-[9.5px] text-slate-500 mt-1 font-mono font-semibold">
+                              Assigned Engine: <b className="text-slate-400 font-semibold">{assignedAgent?.name}</b> ({assignedAgent?.role})
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto font-mono">
+                        <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto font-mono">
                           {isRunning && (
                             <span className="text-[8px] font-mono font-bold uppercase text-amber-500 bg-amber-955/40 border border-amber-900/60 px-2 py-0.5 rounded-none animate-pulse">
                               Gemini Reasoning...
@@ -420,20 +521,109 @@ export default function WorkflowView({
                         </div>
                       </div>
 
-                      {/* Prompt and output snippet container */}
-                      <div className="mt-3.5 space-y-2 text-[10px] pt-3 border-t border-[#1E293B] font-mono">
-                        <div className="text-slate-500 flex items-center gap-1.5">
-                          <span className="font-bold text-indigo-400 uppercase">INPUT PROMPT:</span>
-                          <span className="truncate max-w-[280px] sm:max-w-none text-slate-300">{step.promptTemplate}</span>
+                      {/* --- Step Reasoning Logs and real-time outputs block --- */}
+                      <div className="mt-4 space-y-2 pt-3.5 border-t border-[#1E293B] font-mono">
+                        <div className="flex items-center justify-between border-b border-[#1E293B]/40 pb-1.5 select-none font-mono">
+                          <button
+                            type="button"
+                            onClick={() => toggleStepReasoning(step.id)}
+                            className="text-[9px] font-bold font-mono uppercase tracking-wider text-indigo-400 hover:text-indigo-300 transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Terminal className="w-3 h-3" />
+                            REASONING TERMINAL LOGS
+                            <span className="text-[8px] bg-slate-900 text-slate-450 px-1 rounded border border-slate-800 font-mono">
+                              {isExpanded ? 'HIDE' : 'EXPAND'}
+                            </span>
+                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-amber-400 animate-ping' : isCompleted ? 'bg-emerald-400' : 'bg-slate-700'}`} />
+                            <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${isRunning ? 'text-amber-400' : isCompleted ? 'text-emerald-400' : 'text-slate-500'}`}>
+                              {isRunning ? 'ACTIVE PROCESS' : isCompleted ? 'CONSENSUS ON' : 'STAGED'}
+                            </span>
+                          </div>
                         </div>
 
-                        {step.output && (
-                          <div className="bg-[#0A0C10] rounded-sm p-3 border border-[#1E293B] max-h-[140px] overflow-y-auto text-slate-300 font-sans leading-relaxed text-[10px] space-y-2 mt-2 custom-scrollbar">
-                            <span className="font-mono text-[8px] text-emerald-400 border-b border-[#1E293B] pb-1.5 flex items-center gap-1 mb-2.5 uppercase tracking-wider font-bold">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                              Decentralized Execution Log Output
-                            </span>
-                            <div className="whitespace-pre-line text-slate-350 text-[11px] font-mono">{step.output}</div>
+                        {isExpanded && (
+                          <div className="bg-[#05070A] rounded-sm p-3 border border-[#1E293B] font-mono text-[9.5px] space-y-3 max-h-[220px] overflow-y-auto custom-scrollbar text-slate-350">
+                            {/* Input Prompt Section */}
+                            <div>
+                              <span className="text-indigo-400 font-bold text-[8px] block uppercase tracking-wider mb-1 font-mono">
+                                [I] INPUT PROMPT TARGET:
+                              </span>
+                              <div className="text-slate-300 bg-[#0A0C10] p-1.5 rounded-sm border border-slate-900/60 leading-normal font-sans italic text-[10.5px]">
+                                "{step.promptTemplate}"
+                              </div>
+                            </div>
+
+                            {/* Supplementary Telemetry Logs */}
+                            <div className="space-y-1.5 border-t border-[#1E293B]/50 pt-2.5 font-mono">
+                              <span className="text-amber-500 font-bold text-[8px] block uppercase tracking-wider mb-1 font-mono">
+                                [II] REAL-TIME MODEL PROCESS TELEMETRY:
+                              </span>
+                              {stepLogs.length === 0 ? (
+                                <div className="text-slate-555 italic pl-1 leading-normal font-mono">
+                                  {isRunning ? (
+                                    <div className="space-y-1 font-mono">
+                                      <div className="text-amber-400 animate-pulse">&gt; [CONNECTING] Connecting to Gemini API gateway mesh...</div>
+                                      <div className="text-amber-400 select-none animate-pulse delay-150">&gt; [TOKEN PREPARATION] Serializing prompt instructions template...</div>
+                                      <div className="text-amber-350 select-none animate-pulse delay-300">&gt; [ORCHESTRATING] Model generated sub-sequence parameters...</div>
+                                    </div>
+                                  ) : isPending ? (
+                                    "Node inactive. Trigger Run Stage to deploy autonomous reasoning process."
+                                  ) : (
+                                    "No supplementary event telemetry logs captured for this step node."
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="space-y-1 bg-[#0A0C10]/40 p-2 rounded-sm border border-slate-900 font-mono">
+                                  {stepLogs.map((log, lIdx) => {
+                                    let logColor = 'text-slate-400';
+                                    let label = 'INFO';
+                                    if (log.type === 'agent_start') { logColor = 'text-amber-400'; label = 'CORE_START'; }
+                                    if (log.type === 'agent_response') { logColor = 'text-emerald-400'; label = 'SYS_RESPONSE'; }
+                                    if (log.type === 'agent_error') { logColor = 'text-rose-450'; label = 'TASK_ERR'; }
+                                    return (
+                                      <div key={lIdx} className="space-y-0.5 border-b border-slate-950/30 pb-1.5 last:border-0 last:pb-0 font-mono">
+                                        <div className="flex items-center gap-1.5 text-[8px] select-none text-slate-500 font-mono">
+                                          <span>{new Date(log.timestamp).toLocaleTimeString()}</span>
+                                          <span className="font-bold uppercase tracking-widest bg-slate-900 border border-slate-800 px-1 rounded-sm text-slate-450">{label}</span>
+                                          {log.agentName && <span className="text-[#6366f1] font-bold">&lt;{log.agentName}&gt;</span>}
+                                        </div>
+                                        <div className={`pl-1.5 border-l border-indigo-950/60 mt-0.5 text-[10px] uppercase font-bold ${logColor} font-mono`}>
+                                          &gt; {log.message}
+                                        </div>
+                                        {log.detail && (
+                                          <div className="pl-3.5 text-[9px] text-slate-500 font-sans leading-relaxed whitespace-pre-wrap mt-0.5">
+                                            {log.detail}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Markdown/Raw outputs */}
+                            <div className="border-t border-[#1E293B]/50 pt-2.5 font-mono">
+                              <span className="text-emerald-400 font-bold text-[8px] block uppercase tracking-wider mb-1 font-mono">
+                                [III] DECISION ENGINE OUTPUT LOG:
+                              </span>
+                              {isRunning ? (
+                                <div className="py-2 flex flex-col items-center justify-center space-y-1.5 select-none bg-[#020305] rounded-sm p-3 border border-[#1E293B]/60 font-mono">
+                                  <Cpu className="w-4 h-4 text-amber-500 animate-spin" />
+                                  <div className="text-[8px] uppercase tracking-widest text-[#E2E8F0] bg-amber-955/20 px-2 py-0.5 border border-amber-900/60 animate-pulse font-bold font-mono">
+                                    Gemini 3.5 Active Stream
+                                  </div>
+                                </div>
+                              ) : step.output ? (
+                                <div className="whitespace-pre-line text-slate-300 text-[10px] bg-[#020305] p-3 rounded-sm border border-[#1E293B] shadow-inner font-mono leading-relaxed select-all selection:bg-indigo-900 max-h-[160px] overflow-y-auto custom-scrollbar">
+                                  {step.output}
+                                </div>
+                              ) : (
+                                <div className="text-slate-555 italic pl-1 leading-normal font-mono">Waiting for step execution to generate decision payloads.</div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -454,7 +644,7 @@ export default function WorkflowView({
                   if (log.type === 'agent_error') logColor = 'text-rose-450';
 
                   return (
-                    <div key={i} className="flex items-start gap-2.5">
+                    <div key={i} className="flex items-start gap-2.5 font-mono">
                       <span className="text-slate-650 shrink-0">{new Date(log.timestamp).toLocaleTimeString()}</span>
                       <span className="text-slate-600 shrink-0">[{log.type.toUpperCase()}]</span>
                       {log.agentName && <span className="text-indigo-400 font-bold shrink-0">{log.agentName}:</span>}
