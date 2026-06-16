@@ -107,12 +107,76 @@ let dbWorkflows: Workflow[] = [
 
 let dbTasks: TaskExecution[] = [
   {
+    id: "task-3",
+    title: "System-Wide Zero-Trust Cryptographic Core Audit",
+    workflowId: "wf-2",
+    status: "running",
+    currentStepIndex: 1,
+    createdAt: new Date(Date.now() - 600000).toISOString(),
+    priority: "critical",
+    order: 1,
+    steps: [
+      {
+        id: "s-2-1",
+        agentId: "agent-1",
+        description: "Formulate Threat Matrix Assessment",
+        promptTemplate: "Conduct a rapid vulnerability assessment of localized file-system replication. Highlight identity-spoofing vectors and memory sniffing targets.",
+        status: "completed",
+        output: "## LOCAL THREAT EXPONENT MATRIX\n1. Spooling local memory vectors found potential stack buffer leak during sub-layer parsing.\n2. Device-identity spoofing mitigated through ephemeral SHA256 key exchanges."
+      },
+      {
+        id: "s-2-2",
+        agentId: "agent-3",
+        description: "Outline Key Derivation Blueprint",
+        promptTemplate: "Write a high-precision TypeScript configuration illustrating client-side sub-key derivation utilizing standard WebCrypto PBSKDF2 and AES-GCM wrappers to harden synchronization data.",
+        status: "running"
+      }
+    ],
+    logs: [
+      { timestamp: new Date(Date.now() - 600000).toISOString(), type: "info", message: "Task initialized." },
+      { timestamp: new Date(Date.now() - 550000).toISOString(), type: "agent_start", agentName: "Architect Core", message: "Verifying Host Identity..." },
+      { timestamp: new Date(Date.now() - 400000).toISOString(), type: "agent_response", agentName: "Architect Core", message: "Formulate Threat Matrix completed successfully." },
+      { timestamp: new Date(Date.now() - 200000).toISOString(), type: "agent_start", agentName: "SysExec", message: "Spinning subkey generation threads..." }
+    ]
+  },
+  {
+    id: "task-2",
+    title: "Intelligence Mesh Decentralized Trend Scan",
+    workflowId: "wf-1",
+    status: "pending",
+    currentStepIndex: 0,
+    createdAt: new Date(Date.now() - 1200000).toISOString(),
+    priority: "high",
+    order: 2,
+    steps: [
+      {
+        id: "s-1-1",
+        agentId: "agent-2",
+        description: "Analyze market leaders",
+        promptTemplate: "Analyze the top 3 modern trends in autonomous software engines. Focus on decentralized state sync, security vectors, and speed. Provide a structured summary.",
+        status: "pending"
+      },
+      {
+        id: "s-1-2",
+        agentId: "agent-3",
+        description: "Draft structural state machine",
+        promptTemplate: "Based on the Web Analyst's findings, construct a modular JSON representation of a state machine representing localized cross-platform sync capabilities. Use dry-run cryptographic protocols.",
+        status: "pending"
+      }
+    ],
+    logs: [
+      { timestamp: new Date(Date.now() - 1200000).toISOString(), type: "info", message: "Task initialized. Queue pending state." }
+    ]
+  },
+  {
     id: "task-1",
     title: "Initial Market Analysis Session",
     workflowId: "wf-1",
     status: "completed",
     currentStepIndex: 1,
     createdAt: new Date(Date.now() - 3600000).toISOString(),
+    priority: "medium",
+    order: 3,
     steps: [
       {
         id: "s-1-1",
@@ -237,9 +301,34 @@ app.get("/api/tasks", (req, res) => {
 app.post("/api/tasks", (req, res) => {
   const task: TaskExecution = req.body;
   if (!task.id) task.id = `task-${Date.now()}`;
-  dbTasks = dbTasks.filter(t => t.id !== task.id);
-  dbTasks.push(task);
-  res.json(task);
+  if (!task.priority) task.priority = "medium";
+  if (task.order === undefined) {
+    const maxOrder = dbTasks.reduce((max, t) => Math.max(max, t.order || 0), 0);
+    task.order = maxOrder + 1;
+  }
+  
+  const idx = dbTasks.findIndex(t => t.id === task.id);
+  if (idx !== -1) {
+    dbTasks[idx] = { ...dbTasks[idx], ...task };
+    res.json(dbTasks[idx]);
+  } else {
+    dbTasks.push(task);
+    res.json(task);
+  }
+});
+
+app.post("/api/tasks/reorder", (req, res) => {
+  const { reorderedTasks } = req.body;
+  if (Array.isArray(reorderedTasks)) {
+    reorderedTasks.forEach((updated: any) => {
+      const idx = dbTasks.findIndex(t => t.id === updated.id);
+      if (idx !== -1) {
+        dbTasks[idx].priority = updated.priority;
+        dbTasks[idx].order = updated.order;
+      }
+    });
+  }
+  res.json({ success: true, tasks: dbTasks });
 });
 
 app.delete("/api/tasks/:id", (req, res) => {

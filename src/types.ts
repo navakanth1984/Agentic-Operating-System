@@ -44,6 +44,8 @@ export interface TaskExecution {
   logs: ExecutionLog[];
   createdAt: string;
   completedAt?: string;
+  priority?: 'critical' | 'high' | 'medium' | 'low';
+  order?: number;
 }
 
 export interface SyncedDevice {
