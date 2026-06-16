@@ -1,0 +1,6 @@
+{
+  "name": "Agent Operating System",
+  "description": "An autonomous task execution system and multi-agent orchestrator featuring cross-platform encrypted state synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
