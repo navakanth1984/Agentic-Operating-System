@@ -228,16 +228,21 @@ export default function App() {
     }
   };
 
-  const handleRefreshSystemMetrics = async () => {
+  const showNotification = React.useCallback((message: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setNotif({ message, type });
+    setTimeout(() => setNotif(null), 4000);
+  }, []);
+
+  const handleRefreshSystemMetrics = React.useCallback(async () => {
     try {
       const res = await fetch('/api/system-resources').then(r => r.json());
       setSystemMetrics(res);
     } catch (err) {
       console.warn('Failed to refresh system metrics', err);
     }
-  };
+  }, []);
 
-  const handleSimulateSystemSpike = async () => {
+  const handleSimulateSystemSpike = React.useCallback(async () => {
     try {
       const response = await fetch('/api/system-resources/simulate', { method: 'POST' });
       if (response.ok) {
@@ -248,17 +253,12 @@ export default function App() {
     } catch (err) {
       console.warn('Spike simulation request failed', err);
     }
-  };
+  }, [showNotification]);
 
   useEffect(() => {
     refreshAllData();
     deriveFingerprint(encryptionPassphrase);
   }, []);
-
-  const showNotification = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
-    setNotif({ message, type });
-    setTimeout(() => setNotif(null), 4000);
-  };
 
   const deriveFingerprint = async (pass: string) => {
     if (!pass) {
