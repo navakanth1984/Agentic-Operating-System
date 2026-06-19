@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Cpu, RefreshCw, Zap, TrendingUp, ShieldAlert, Server, BarChart3, Clock, Database, Play, Pause } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { ResourceMetric } from '../types';
@@ -8,6 +8,34 @@ interface SystemResourcesViewProps {
   onSimulateSpike: () => Promise<void>;
   onRefreshMetrics: () => Promise<void>;
 }
+
+// Extract CustomTooltip outside component to prevent re-creating the function on every render,
+// which avoids unmounting/remounting the DOM node and layout thrashing in Recharts.
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-[#0A0C10] border border-[#1E293B] p-3 rounded-sm shadow-md font-mono text-[10px] space-y-1.5">
+        <div className="text-slate-500 font-bold border-b border-[#1E293B] pb-1 flex items-center gap-1">
+          <Clock className="w-3 h-3 text-indigo-400" />
+          TIME: {label}
+        </div>
+        {payload.map((entry: any, index: number) => (
+          <div key={index} className="flex items-center gap-4 justify-between">
+            <span className="font-semibold uppercase" style={{ color: entry.stroke }}>
+              {entry.name}:
+            </span>
+            <span className="text-white font-bold">{entry.value}%</span>
+          </div>
+        ))}
+        <div className="flex items-center gap-4 justify-between mt-0.5 pt-1 border-t border-[#1E293B]/60 text-slate-400">
+          <span>ACTIVE TASKS:</span>
+          <span className="text-[#E2E8F0] font-bold">{payload[0]?.payload?.activeTasks || 0}</span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
 const generateInitialSeconds = (count: number) => {
   const list: ResourceMetric[] = [];
@@ -139,10 +167,26 @@ export default function SystemResourcesView({
   const activeMetrics = localMetrics;
   const latest = activeMetrics[activeMetrics.length - 1] || { cpu: 0, memory: 0, activeTasks: 0, timestamp: '--:--' };
   
-  // Calculate historical averages
-  const avgCpu = activeMetrics.length ? Math.round(activeMetrics.reduce((acc, m) => acc + m.cpu, 0) / activeMetrics.length) : 0;
-  const avgMem = activeMetrics.length ? Math.round(activeMetrics.reduce((acc, m) => acc + m.memory, 0) / activeMetrics.length) : 0;
-  const maxCpu = activeMetrics.length ? Math.max(...activeMetrics.map(m => m.cpu)) : 0;
+  // Calculate historical averages using a single pass wrapped in useMemo
+  // to avoid mapping and reducing arrays three times on every render.
+  const { avgCpu, avgMem, maxCpu } = useMemo(() => {
+    const len = activeMetrics.length;
+    if (len === 0) return { avgCpu: 0, avgMem: 0, maxCpu: 0 };
+    let sumCpu = 0;
+    let sumMem = 0;
+    let max = 0;
+    for (let i = 0; i < len; i++) {
+      const metric = activeMetrics[i];
+      sumCpu += metric.cpu;
+      sumMem += metric.memory;
+      if (metric.cpu > max) max = metric.cpu;
+    }
+    return {
+      avgCpu: Math.round(sumCpu / len),
+      avgMem: Math.round(sumMem / len),
+      maxCpu: max
+    };
+  }, [activeMetrics]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -190,33 +234,6 @@ export default function SystemResourcesView({
       console.error(err);
       setIsSpiking(false);
     }
-  };
-
-  // Custom tooltips to match our sleek cyber-ops theme
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-[#0A0C10] border border-[#1E293B] p-3 rounded-sm shadow-md font-mono text-[10px] space-y-1.5">
-          <div className="text-slate-500 font-bold border-b border-[#1E293B] pb-1 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-indigo-400" />
-            TIME: {label}
-          </div>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-4 justify-between">
-              <span className="font-semibold uppercase" style={{ color: entry.stroke }}>
-                {entry.name}:
-              </span>
-              <span className="text-white font-bold">{entry.value}%</span>
-            </div>
-          ))}
-          <div className="flex items-center gap-4 justify-between mt-0.5 pt-1 border-t border-[#1E293B]/60 text-slate-400">
-            <span>ACTIVE TASKS:</span>
-            <span className="text-[#E2E8F0] font-bold">{payload[0]?.payload?.activeTasks || 0}</span>
-          </div>
-        </div>
-      );
-    }
-    return null;
   };
 
   return (
