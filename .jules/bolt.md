@@ -1,0 +1,3 @@
+## 2025-03-01 - Avoid inline component definitions for Recharts custom tooltips
+**Learning:** Defining a custom component (like `CustomTooltip`) inside a parent component that updates frequently (e.g., via `setInterval`) causes React to re-create the component reference on every render. When passed to external libraries like Recharts, this leads to continuous unmounting and remounting of the DOM node, resulting in severe layout thrashing and performance degradation, especially during fast telemetry updates.
+**Action:** Always extract static custom component definitions outside of the parent component, or memoize them using `useCallback`/`useMemo` if they require closure scope, particularly in high-frequency rendering contexts.
