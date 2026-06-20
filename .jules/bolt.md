@@ -1,0 +1,3 @@
+## 2025-03-09 - [App.tsx Multiple Filter Optimization]
+**Learning:** React component with a `sortedTasks` array had multiple `.filter()` iterations directly embedded within JSX markup and variable initialization, causing O(N) execution scaling to unnecessarily multiply by the number of instances rendered/checked. Re-calculating the identical filtering logic on each component render loop was slowing down the component re-rendering significantly.
+**Action:** Consolidate multiple array iteration passes (`.filter`) into a single combined `useMemo` block using `forEach`. Calculate derived state aggregates (`active`, `history`, `all` counts and the final filtered array itself) inside the same iteration pass.
