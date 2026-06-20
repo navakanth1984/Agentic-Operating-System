@@ -46,6 +46,13 @@ import NetworkMesh3D from './components/NetworkMesh3D.js';
 import BillingView from './components/BillingView.js';
 import AuthGate from './components/AuthGate.js';
 
+const priorityWeight = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1
+};
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<{
     email: string;
@@ -75,13 +82,6 @@ export default function App() {
 
   // Auto-sort tasks dynamically based on status (active first), then priority, then manual order index, and fallback to creation date
   const sortedTasks = React.useMemo(() => {
-    const priorityWeight = {
-      critical: 4,
-      high: 3,
-      medium: 2,
-      low: 1
-    };
-
     return [...tasks].sort((a, b) => {
       // 1. Group active/running sessions first
       const isAActive = a.status === 'pending' || a.status === 'running' ? 1 : 0;
@@ -106,6 +106,30 @@ export default function App() {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [tasks]);
+
+  // Performance Optimization: Calculate filtered tasks and counts in a single pass
+  // This reduces iterations from O(5N) (3 tabs + empty check + map) to O(N) per dependency change
+  const { filteredTasks, taskCounts } = React.useMemo(() => {
+    const counts = { active: 0, history: 0, all: sortedTasks.length };
+    const filtered: typeof sortedTasks = [];
+
+    sortedTasks.forEach(t => {
+      const isActive = t.status === 'pending' || t.status === 'running';
+      const isHistory = t.status === 'completed' || t.status === 'failed';
+
+      if (isActive) counts.active++;
+      if (isHistory) counts.history++;
+
+      const shouldInclude = queueFilter === 'active' ? isActive
+                          : queueFilter === 'history' ? isHistory
+                          : true;
+      if (shouldInclude) {
+        filtered.push(t);
+      }
+    });
+
+    return { filteredTasks: filtered, taskCounts: counts };
+  }, [sortedTasks, queueFilter]);
 
   const [devices, setDevices] = useState<SyncedDevice[]>([]);
   const [cloudBackup, setCloudBackup] = useState<SyncBackup | null>(null);
@@ -853,11 +877,7 @@ export default function App() {
                     {/* Filter tabs */}
                     <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-850/85">
                       {(['active', 'history', 'all'] as const).map((tab) => {
-                        const count = sortedTasks.filter(t => {
-                          if (tab === 'active') return t.status === 'pending' || t.status === 'running';
-                          if (tab === 'history') return t.status === 'completed' || t.status === 'failed';
-                          return true;
-                        }).length;
+                        const count = taskCounts[tab];
 
                         const labels = {
                           active: 'Active Queue',
@@ -885,23 +905,14 @@ export default function App() {
 
                   <div className="space-y-3.5 max-h-[380px] overflow-y-auto pr-1">
                     {/* Filtered tasks */}
-                    {sortedTasks.filter(t => {
-                      if (queueFilter === 'active') return t.status === 'pending' || t.status === 'running';
-                      if (queueFilter === 'history') return t.status === 'completed' || t.status === 'failed';
-                      return true;
-                    }).length === 0 ? (
+                    {filteredTasks.length === 0 ? (
                       <div className="text-center py-8 bg-slate-950/40 rounded-xl border border-dashed border-slate-850 flex flex-col items-center justify-center space-y-2">
                         <History className="w-6 h-6 text-slate-700 animate-pulse" />
                         <div className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">Queue Stack Empty</div>
                         <p className="text-[9px] text-slate-600 max-w-[200px]">No pipelines current in this status state.</p>
                       </div>
                     ) : (
-                      sortedTasks
-                        .filter(t => {
-                          if (queueFilter === 'active') return t.status === 'pending' || t.status === 'running';
-                          if (queueFilter === 'history') return t.status === 'completed' || t.status === 'failed';
-                          return true;
-                        })
+                      filteredTasks
                         .map((t) => {
                           const isActive = t.status === 'pending' || t.status === 'running';
                           const isDragged = draggedTaskId === t.id;
