@@ -44,6 +44,33 @@ const generateInitialMinutes = (count: number) => {
   return list;
 };
 
+// Custom tooltips to match our sleek cyber-ops theme
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-[#0A0C10] border border-[#1E293B] p-3 rounded-sm shadow-md font-mono text-[10px] space-y-1.5">
+        <div className="text-slate-500 font-bold border-b border-[#1E293B] pb-1 flex items-center gap-1">
+          <Clock className="w-3 h-3 text-indigo-400" />
+          TIME: {label}
+        </div>
+        {payload.map((entry: any, index: number) => (
+          <div key={index} className="flex items-center gap-4 justify-between">
+            <span className="font-semibold uppercase" style={{ color: entry.stroke }}>
+              {entry.name}:
+            </span>
+            <span className="text-white font-bold">{entry.value}%</span>
+          </div>
+        ))}
+        <div className="flex items-center gap-4 justify-between mt-0.5 pt-1 border-t border-[#1E293B]/60 text-slate-400">
+          <span>ACTIVE TASKS:</span>
+          <span className="text-[#E2E8F0] font-bold">{payload[0]?.payload?.activeTasks || 0}</span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function SystemResourcesView({
   metrics,
   onSimulateSpike,
@@ -61,7 +88,9 @@ export default function SystemResourcesView({
   const [windowLimit, setWindowLimit] = useState<number>(30);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [interpolation, setInterpolation] = useState<'monotone' | 'step' | 'linear'>('monotone');
-  const [localMetrics, setLocalMetrics] = useState<ResourceMetric[]>(generateInitialSeconds(30));
+
+  // ⚡ Bolt Optimization: Use lazy initialization to avoid regenerating 30 items on every render
+  const [localMetrics, setLocalMetrics] = useState<ResourceMetric[]>(() => generateInitialSeconds(30));
 
   // Initialize/re-fill local metrics when timeDimension or windowLimit changes
   useEffect(() => {
@@ -139,10 +168,15 @@ export default function SystemResourcesView({
   const activeMetrics = localMetrics;
   const latest = activeMetrics[activeMetrics.length - 1] || { cpu: 0, memory: 0, activeTasks: 0, timestamp: '--:--' };
   
-  // Calculate historical averages
-  const avgCpu = activeMetrics.length ? Math.round(activeMetrics.reduce((acc, m) => acc + m.cpu, 0) / activeMetrics.length) : 0;
-  const avgMem = activeMetrics.length ? Math.round(activeMetrics.reduce((acc, m) => acc + m.memory, 0) / activeMetrics.length) : 0;
-  const maxCpu = activeMetrics.length ? Math.max(...activeMetrics.map(m => m.cpu)) : 0;
+  // ⚡ Bolt Optimization: Memoize historical averages so we don't reduce arrays on every tick (every 1000ms)
+  const { avgCpu, avgMem, maxCpu } = React.useMemo(() => {
+    if (!activeMetrics.length) return { avgCpu: 0, avgMem: 0, maxCpu: 0 };
+    return {
+      avgCpu: Math.round(activeMetrics.reduce((acc, m) => acc + m.cpu, 0) / activeMetrics.length),
+      avgMem: Math.round(activeMetrics.reduce((acc, m) => acc + m.memory, 0) / activeMetrics.length),
+      maxCpu: Math.max(...activeMetrics.map(m => m.cpu))
+    };
+  }, [activeMetrics]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -190,33 +224,6 @@ export default function SystemResourcesView({
       console.error(err);
       setIsSpiking(false);
     }
-  };
-
-  // Custom tooltips to match our sleek cyber-ops theme
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-[#0A0C10] border border-[#1E293B] p-3 rounded-sm shadow-md font-mono text-[10px] space-y-1.5">
-          <div className="text-slate-500 font-bold border-b border-[#1E293B] pb-1 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-indigo-400" />
-            TIME: {label}
-          </div>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-4 justify-between">
-              <span className="font-semibold uppercase" style={{ color: entry.stroke }}>
-                {entry.name}:
-              </span>
-              <span className="text-white font-bold">{entry.value}%</span>
-            </div>
-          ))}
-          <div className="flex items-center gap-4 justify-between mt-0.5 pt-1 border-t border-[#1E293B]/60 text-slate-400">
-            <span>ACTIVE TASKS:</span>
-            <span className="text-[#E2E8F0] font-bold">{payload[0]?.payload?.activeTasks || 0}</span>
-          </div>
-        </div>
-      );
-    }
-    return null;
   };
 
   return (
