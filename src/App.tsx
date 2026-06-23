@@ -255,10 +255,10 @@ export default function App() {
     deriveFingerprint(encryptionPassphrase);
   }, []);
 
-  const showNotification = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+  const showNotification = React.useCallback((message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setNotif({ message, type });
     setTimeout(() => setNotif(null), 4000);
-  };
+  }, []);
 
   const deriveFingerprint = async (pass: string) => {
     if (!pass) {
