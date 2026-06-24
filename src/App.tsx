@@ -130,6 +130,9 @@ export default function App() {
   const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
 
   const commandPaletteResults = React.useMemo(() => {
+    // ⚡ Bolt Optimization: Skip expensive command palette creation if it's closed
+    if (!isCommandPaletteOpen) return [];
+
     const query = commandPaletteSearch.trim().toLowerCase();
     
     // Define structural search items
@@ -185,7 +188,7 @@ export default function App() {
       item.category.toLowerCase().includes(query) ||
       (item.subtitle && item.subtitle.toLowerCase().includes(query))
     );
-  }, [commandPaletteSearch, workflows, tasks, encryptionPassphrase]);
+  }, [commandPaletteSearch, workflows, tasks, encryptionPassphrase, isCommandPaletteOpen]);
 
   // Interface controls
   const [activeTab, setActiveTab] = useState<'dashboard' | 'terminal' | 'agents' | 'workflows' | 'sync' | 'billing'>('dashboard');
