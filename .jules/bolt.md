@@ -1,0 +1,3 @@
+## 2024-06-24 - Expensive useMemo Triggered by Background Polling
+**Learning:** `useMemo` hooks with dynamic dependencies (like a `tasks` list that is automatically refreshed every 10 seconds) can be surprisingly expensive if the result maps over multiple arrays (workflows and tasks) and creates new objects, even when the UI element consuming the memoized value (e.g., Command Palette) is hidden.
+**Action:** When a heavily-mapped structure is only visible conditionally, add the visibility state (e.g., `isCommandPaletteOpen`) to the `useMemo` dependency array and use it to early-return (e.g., `if (!isCommandPaletteOpen) return [];`). This halts the unnecessary repeated object creation when the component is inactive but dependencies keep polling.
