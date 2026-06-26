@@ -129,6 +129,15 @@ export default function App() {
   const [quickTaskPriority, setQuickTaskPriority] = useState<'critical' | 'high' | 'medium' | 'low'>('medium');
   const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
 
+  // ⚡ Bolt Optimization: Memoize filtered tasks to prevent recalculating array on every render
+  const filteredTasks = React.useMemo(() => {
+    return sortedTasks.filter(t => {
+      if (queueFilter === 'active') return t.status === 'pending' || t.status === 'running';
+      if (queueFilter === 'history') return t.status === 'completed' || t.status === 'failed';
+      return true;
+    });
+  }, [sortedTasks, queueFilter]);
+
   const commandPaletteResults = React.useMemo(() => {
     const query = commandPaletteSearch.trim().toLowerCase();
     
@@ -853,11 +862,13 @@ export default function App() {
                     {/* Filter tabs */}
                     <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-850/85">
                       {(['active', 'history', 'all'] as const).map((tab) => {
-                        const count = sortedTasks.filter(t => {
-                          if (tab === 'active') return t.status === 'pending' || t.status === 'running';
-                          if (tab === 'history') return t.status === 'completed' || t.status === 'failed';
-                          return true;
-                        }).length;
+                        const count = tab === queueFilter
+                          ? filteredTasks.length
+                          : sortedTasks.filter(t => {
+                              if (tab === 'active') return t.status === 'pending' || t.status === 'running';
+                              if (tab === 'history') return t.status === 'completed' || t.status === 'failed';
+                              return true;
+                            }).length;
 
                         const labels = {
                           active: 'Active Queue',
@@ -885,23 +896,14 @@ export default function App() {
 
                   <div className="space-y-3.5 max-h-[380px] overflow-y-auto pr-1">
                     {/* Filtered tasks */}
-                    {sortedTasks.filter(t => {
-                      if (queueFilter === 'active') return t.status === 'pending' || t.status === 'running';
-                      if (queueFilter === 'history') return t.status === 'completed' || t.status === 'failed';
-                      return true;
-                    }).length === 0 ? (
+                    {filteredTasks.length === 0 ? (
                       <div className="text-center py-8 bg-slate-950/40 rounded-xl border border-dashed border-slate-850 flex flex-col items-center justify-center space-y-2">
                         <History className="w-6 h-6 text-slate-700 animate-pulse" />
                         <div className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest">Queue Stack Empty</div>
                         <p className="text-[9px] text-slate-600 max-w-[200px]">No pipelines current in this status state.</p>
                       </div>
                     ) : (
-                      sortedTasks
-                        .filter(t => {
-                          if (queueFilter === 'active') return t.status === 'pending' || t.status === 'running';
-                          if (queueFilter === 'history') return t.status === 'completed' || t.status === 'failed';
-                          return true;
-                        })
+                      filteredTasks
                         .map((t) => {
                           const isActive = t.status === 'pending' || t.status === 'running';
                           const isDragged = draggedTaskId === t.id;
