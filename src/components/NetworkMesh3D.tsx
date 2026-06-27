@@ -28,7 +28,10 @@ interface NetworkMesh3DProps {
   isSpiking?: boolean;
 }
 
-export default function NetworkMesh3D({ agentsCount = 3, isSpiking = false }: NetworkMesh3DProps) {
+// ⚡ Bolt Optimization: Wrap component in React.memo to prevent unnecessary canvas re-renders and logic recalcs
+// when parent component (App.tsx) re-renders due to unrelated state changes (like drag events or global polling).
+// Expected Impact: Significantly lowers main thread CPU usage, removes canvas jitter on App state changes.
+export default React.memo(function NetworkMesh3D({ agentsCount = 3, isSpiking = false }: NetworkMesh3DProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -637,4 +640,4 @@ export default function NetworkMesh3D({ agentsCount = 3, isSpiking = false }: Ne
       </div>
     </div>
   );
-}
+})
