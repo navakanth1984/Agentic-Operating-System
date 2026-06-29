@@ -44,7 +44,7 @@ const generateInitialMinutes = (count: number) => {
   return list;
 };
 
-export default function SystemResourcesView({
+const SystemResourcesView = React.memo(function SystemResourcesView({
   metrics,
   onSimulateSpike,
   onRefreshMetrics,
@@ -578,4 +578,6 @@ export default function SystemResourcesView({
       </div>
     </div>
   );
-}
+});
+
+export default SystemResourcesView;

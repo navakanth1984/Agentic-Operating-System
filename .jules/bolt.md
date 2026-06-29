@@ -1,0 +1,3 @@
+## 2026-06-29 - ISO 8601 Date String Sorting Optimization
+**Learning:** ISO 8601 formatted date strings like '2023-10-27T10:00:00.000Z' are strictly lexicographically sortable. Instantiating `new Date()` inside an `Array.prototype.sort()` compare function is an O(N log N) multiplier for performance cost and is completely unnecessary for ISO string timestamps.
+**Action:** When sorting dates that are formatted in ISO 8601 or similar strict YYYY-MM-DD formats, use `string.localeCompare()` or standard `<` `>` operators directly on the strings instead of converting them to Date objects or numeric epoch timestamps.
