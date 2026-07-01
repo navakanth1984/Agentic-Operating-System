@@ -44,7 +44,7 @@ const generateInitialMinutes = (count: number) => {
   return list;
 };
 
-export default function SystemResourcesView({
+const SystemResourcesView = React.memo(function SystemResourcesView({
   metrics,
   onSimulateSpike,
   onRefreshMetrics,
@@ -578,4 +578,12 @@ export default function SystemResourcesView({
       </div>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Only re-render if the metrics array reference has changed.
+  // The functions onSimulateSpike and onRefreshMetrics are ignored
+  // in the comparison since they are re-created on each parent render
+  // but do not depend on any closed-over state that changes.
+  return prevProps.metrics === nextProps.metrics;
+});
+
+export default SystemResourcesView;
