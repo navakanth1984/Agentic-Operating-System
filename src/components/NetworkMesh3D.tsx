@@ -28,7 +28,7 @@ interface NetworkMesh3DProps {
   isSpiking?: boolean;
 }
 
-export default function NetworkMesh3D({ agentsCount = 3, isSpiking = false }: NetworkMesh3DProps) {
+const NetworkMesh3D = React.memo(function NetworkMesh3D({ agentsCount = 3, isSpiking = false }: NetworkMesh3DProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -637,4 +637,6 @@ export default function NetworkMesh3D({ agentsCount = 3, isSpiking = false }: Ne
       </div>
     </div>
   );
-}
+});
+
+export default NetworkMesh3D;
